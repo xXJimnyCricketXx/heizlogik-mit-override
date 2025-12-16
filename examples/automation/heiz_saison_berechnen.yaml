@@ -1,0 +1,78 @@
+# ============================================================
+# Heiz-Saison berechnen
+# ============================================================
+#
+# Diese Automation berechnet den globalen Zustand "Heiz-Saison".
+#
+# Die Heiz-Saison wird:
+# - automatisch anhand des Monats aktiviert (typische Heizperiode)
+# - kann jederzeit manuell über einen Override eingeschaltet werden
+#
+# Logik:
+# Heiz-Saison = EIN,
+#   wenn (Monat in Heizperiode) ODER (Override = EIN)
+# sonst:
+# Heiz-Saison = AUS
+#
+# Diese Automation ist bewusst einfach gehalten und dient
+# als Grundlage für raumbezogene Heiz-Automationen.
+#
+# ============================================================
+
+alias: Heiz-Saison berechnen
+description: >
+  Berechnet den globalen Heiz-Saison-Status anhand des aktuellen Monats
+  oder eines manuellen Overrides. Die Heiz-Saison ist aktiv, wenn sich
+  der aktuelle Monat in der Heizperiode befindet oder der Override
+  eingeschaltet ist.
+
+mode: single
+
+# ------------------------------------------------------------
+# Trigger
+# ------------------------------------------------------------
+# - tägliche Prüfung (für Monatswechsel, z. B. 30.09 → 01.10)
+# - sofortige Neuberechnung bei Änderung des Overrides
+# ------------------------------------------------------------
+
+trigger:
+  - platform: time
+    at: "03:00:00"
+
+  - platform: state
+    entity_id: input_boolean.heiz_saison_override
+
+# ------------------------------------------------------------
+# Aktionen / Logik
+# ------------------------------------------------------------
+
+action:
+  - choose:
+      # --------------------------------------------------------
+      # Heiz-Saison EIN
+      # --------------------------------------------------------
+      # Bedingung:
+      # - aktueller Monat ist Teil der Heizperiode
+      #   ODER
+      # - manueller Override ist aktiv
+      # --------------------------------------------------------
+      - conditions:
+          - condition: or
+            conditions:
+              - condition: template
+                value_template: "{{ now().month in [10, 11, 12, 1, 2, 3, 4] }}"
+              - condition: state
+                entity_id: input_boolean.heiz_saison_override
+                state: "on"
+        sequence:
+          - service: input_boolean.turn_on
+            target:
+              entity_id: input_boolean.heiz_saison
+
+    # ----------------------------------------------------------
+    # Heiz-Saison AUS (Standardfall)
+    # ----------------------------------------------------------
+    default:
+      - service: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.heiz_saison
