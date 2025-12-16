@@ -234,7 +234,7 @@ sondern über die jeweiligen Temperatur-Helfer (`input_number`) pro Raum festgel
    - GitHub-URL zur Blueprint-Datei einfügen:
 
 ```
-https://github.com/DEINNAME/heizlogik-mit-override/blob/main/blueprints/automation/heizlogik_mit_override.yaml
+https://github.com/xXJimnyCricketXx/heizlogik-mit-override/blob/main/blueprints/automation/heizlogik_mit_override.yaml
 ```
 > 💡 Nach dem Import steht der Blueprint dauerhaft in Home Assistant zur Verfügung
 und kann für mehrere Räume wiederverwendet werden.
