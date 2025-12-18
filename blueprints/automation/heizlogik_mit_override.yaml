@@ -166,7 +166,7 @@ trigger:
     id: window_close
 
 # -------------------------------------------------
-# Aktionen – ECHT ereignisbasiert
+# Aktionen
 # -------------------------------------------------
 action:
   - choose:
