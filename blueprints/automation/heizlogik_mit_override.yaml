@@ -21,6 +21,17 @@ blueprint:
     - Ohne Zeitplan ist Komfort der Standardbetrieb
     - Fenster schaltet temporär auf ECO (nicht AUS)
 
+    ### Voraussetzungen
+    - `input_boolean` für Heiz-Saison
+    - `input_boolean` für Urlaub
+    - `input_number` für Komfort-Temperatur
+    - `input_number` für ECO-Temperatur
+    - `climate` Entität (Thermostat)
+
+    **Optional:**
+    - Fensterkontakt oder Fenster-Gruppe (`binary_sensor`)
+    - Zeitplan (`schedule`)
+
     ---
     **Version:** 1.0  
     **Von:** JimnyCricket
