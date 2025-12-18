@@ -3,37 +3,26 @@ blueprint:
   author: JimnyCricket
   description: |
     ## Heizlogik mit Override
-    
 
     Manuell freundliche Heizungssteuerung pro Raum.
 
-    Diese Heizlogik setzt auf **Transparenz und manuelle Kontrolle**:
+    Diese Heizlogik setzt auf **Transparenz und Kontrolle**:
     Automationen unterstützen den Alltag, erzwingen aber kein Verhalten.
 
-    **Berücksichtigte Logik:**
-    - Globale Heiz-Saison
-    - Manueller Override
-    - Optionaler Urlaubsmodus
-    - Optionale Zeitpläne (Komfort / ECO)
-    - Optionale Fensterkontakte mit Verzögerung
+    **Logik:**
+    - Globale Heiz-Saison (Pflicht)
+    - Urlaub → ECO
+    - Optionaler Zeitplan → Komfort / ECO
+    - Optionaler Fensterkontakt mit Verzögerung
+    - Ohne Zeitplan bleibt Komfort die Standard-Temperatur
 
-    Ohne Zeitplan bleibt die **manuelle Thermostat-Einstellung erhalten**.
-
-    ---
-
-    ### Voraussetzungen
-    - `input_boolean` für Heiz-Saison
-    - `input_boolean` für Urlaub
-    - `input_number` für Komfort-Temperatur
-    - `input_number` für ECO-Temperatur
-    - `climate` Entität (Thermostat)
-
-    **Optional:**
-    - Fensterkontakt oder Fenster-Gruppe (`binary_sensor`)
-    - Zeitplan (`schedule`)
+    **Wichtiges Verhalten:**
+    - Änderung von Komfort/ECO wirkt sofort, wenn dieser Modus aktiv ist
+    - Ohne Zeitplan ist Komfort der Standardbetrieb
+    - Fenster schaltet temporär auf ECO (nicht AUS)
 
     ---
-    **Version:** 1.0
+    **Version:** 1.0  
     **Von:** JimnyCricket
 
   domain: automation
@@ -41,63 +30,42 @@ blueprint:
   input:
     heiz_saison:
       name: Heiz-Saison
-      description: >
-        Globaler Schalter, der vorgibt, ob grundsätzlich geheizt werden soll.
-        Die Heiz-Saison wird normalerweise automatisch berechnet
-        und nicht manuell geschaltet.
       selector:
         entity:
           domain: input_boolean
 
     urlaub:
       name: Urlaub
-      description: >
-        Signalisiert eine längere Abwesenheit.
-        Wenn aktiv, wird der Raum in den ECO-Betrieb versetzt.
       selector:
         entity:
           domain: input_boolean
 
     climate_entity:
       name: Thermostat
-      description: >
-        Das Thermostat dieses Raumes (z. B. Aqara E1).
       selector:
         entity:
           domain: climate
 
     komfort_temp:
       name: Komfort-Temperatur
-      description: >
-        Soll-Temperatur für den Komfort-Betrieb.
-        Wird typischerweise bei Anwesenheit oder aktivem Zeitplan verwendet.
       selector:
         entity:
           domain: input_number
 
     eco_temp:
       name: ECO-Temperatur
-      description: >
-        Soll-Temperatur für den ECO-Betrieb.
-        Wird z. B. bei Urlaub oder in ECO-Zeiten genutzt.
       selector:
         entity:
           domain: input_number
 
     zeitplan_aktiv:
       name: Zeitplan berücksichtigen?
-      description: >
-        Wenn aktiviert, wird ein Zeitplan ausgewertet,
-        um zwischen Komfort- und ECO-Temperatur zu wechseln.
       default: false
       selector:
         boolean: {}
 
     zeitplan:
       name: Zeitplan
-      description: >
-        Optionaler Zeitplan, der festlegt,
-        wann Komfort- oder ECO-Betrieb aktiv sein soll.
       default:
       selector:
         entity:
@@ -105,18 +73,12 @@ blueprint:
 
     fenster_aktiv:
       name: Fenster berücksichtigen?
-      description: >
-        Wenn aktiviert, wird das Thermostat bei geöffnetem Fenster
-        (nach einer Verzögerung) ausgeschaltet.
       default: false
       selector:
         boolean: {}
 
     fenster:
-      name: Fensterkontakt oder Fenster-Gruppe
-      description: >
-        Fensterkontakt oder Gruppe von Fensterkontakten dieses Raumes.
-        Bei mehreren Fenstern sollte eine Gruppe verwendet werden.
+      name: Fensterkontakt / Gruppe
       default:
       selector:
         entity:
@@ -124,68 +86,250 @@ blueprint:
 
     fenster_verzoegerung:
       name: Fenster-Verzögerung
-      description: >
-        Wie lange ein Fenster geöffnet oder geschlossen sein muss,
-        bevor die Heizlogik reagiert.
       default: "00:10:00"
       selector:
         time:
 
 mode: restart
 
+# -------------------------------------------------
+# Variablen
+# -------------------------------------------------
+variables:
+  heiz_saison_ent: !input heiz_saison
+  urlaub_ent: !input urlaub
+  climate_ent: !input climate_entity
+  komfort_ent: !input komfort_temp
+  eco_ent: !input eco_temp
+  zeitplan_ent: !input zeitplan
+  zeitplan_enabled: !input zeitplan_aktiv
+  fenster_ent: !input fenster
+  fenster_enabled: !input fenster_aktiv
+
+# -------------------------------------------------
+# Trigger (HA-sicher, optional-fest)
+# -------------------------------------------------
 trigger:
-  # Fenster länger offen
-  - platform: template
-    value_template: "{{ fenster_aktiv and is_state(fenster, 'on') }}"
-    for: !input fenster_verzoegerung
-    id: fenster_offen
-
-  # Fenster länger geschlossen
-  - platform: template
-    value_template: "{{ fenster_aktiv and is_state(fenster, 'off') }}"
-    for: !input fenster_verzoegerung
-    id: fenster_zu
-
-  # Relevante Statusänderungen
+  # Heiz-Saison
   - platform: state
-    entity_id:
-      - !input heiz_saison
-      - !input urlaub
-      - !input zeitplan
-    id: status_update
-
-condition:
-  # Heizlogik nur aktiv, wenn Heiz-Saison an ist
-  - condition: state
     entity_id: !input heiz_saison
-    state: "on"
+    to: "on"
+    id: season_on
 
+  - platform: state
+    entity_id: !input heiz_saison
+    to: "off"
+    id: season_off
+
+  # Urlaub
+  - platform: state
+    entity_id: !input urlaub
+    to: "on"
+    id: vacation_on
+
+  - platform: state
+    entity_id: !input urlaub
+    to: "off"
+    id: vacation_off
+
+  # Temperatur-Helfer
+  - platform: state
+    entity_id: !input komfort_temp
+    id: comfort_temp_changed
+
+  - platform: state
+    entity_id: !input eco_temp
+    id: eco_temp_changed
+
+  # Zeitplan (optional!)
+  - platform: template
+    value_template: >
+      {{ zeitplan_enabled and zeitplan_ent is not none and is_state(zeitplan_ent, 'on') }}
+    id: schedule_on
+
+  - platform: template
+    value_template: >
+      {{ zeitplan_enabled and zeitplan_ent is not none and is_state(zeitplan_ent, 'off') }}
+    id: schedule_off
+
+  # Fenster (optional!)
+  - platform: template
+    value_template: >
+      {{ fenster_enabled and fenster_ent is not none and is_state(fenster_ent, 'on') }}
+    for: !input fenster_verzoegerung
+    id: window_open
+
+  - platform: template
+    value_template: >
+      {{ fenster_enabled and fenster_ent is not none and is_state(fenster_ent, 'off') }}
+    for: !input fenster_verzoegerung
+    id: window_close
+
+# -------------------------------------------------
+# Aktionen – ECHT ereignisbasiert
+# -------------------------------------------------
 action:
   - choose:
 
-      # -------------------------------------------------
-      # Fenster länger offen → ECO-Temperatur
-      # -------------------------------------------------
+      # -------------------------------------------
+      # Heiz-Saison AUS → Heizung aus
+      # -------------------------------------------
       - conditions:
           - condition: trigger
-            id: fenster_offen
+            id: season_off
+        sequence:
+          - service: climate.set_hvac_mode
+            target:
+              entity_id: !input climate_entity
+            data:
+              hvac_mode: off
+
+      # -------------------------------------------
+      # Heiz-Saison AN → Heizung bereit + Zieltemp
+      # -------------------------------------------
+      - conditions:
+          - condition: trigger
+            id: season_on
+        sequence:
+          - service: climate.set_hvac_mode
+            target:
+              entity_id: !input climate_entity
+            data:
+              hvac_mode: heat
+          - choose:
+              - conditions:
+                  - condition: state
+                    entity_id: !input urlaub
+                    state: "on"
+                sequence:
+                  - service: climate.set_temperature
+                    target:
+                      entity_id: !input climate_entity
+                    data:
+                      temperature: "{{ states(eco_ent) | float }}"
+              - conditions:
+                  - condition: template
+                    value_template: >
+                      {{ zeitplan_enabled and zeitplan_ent is not none and is_state(zeitplan_ent, 'off') }}
+                sequence:
+                  - service: climate.set_temperature
+                    target:
+                      entity_id: !input climate_entity
+                    data:
+                      temperature: "{{ states(eco_ent) | float }}"
+            default:
+              - service: climate.set_temperature
+                target:
+                  entity_id: !input climate_entity
+                data:
+                  temperature: "{{ states(komfort_ent) | float }}"
+
+      # -------------------------------------------
+      # Urlaub AN → ECO
+      # -------------------------------------------
+      - conditions:
+          - condition: trigger
+            id: vacation_on
+          - condition: state
+            entity_id: !input heiz_saison
+            state: "on"
         sequence:
           - service: climate.set_temperature
             target:
               entity_id: !input climate_entity
             data:
-              temperature: "{{ states(eco_temp) | float }}"
+              temperature: "{{ states(eco_ent) | float }}"
 
-      # -------------------------------------------------
-      # Fenster wieder geschlossen → Normalbetrieb
-      # -------------------------------------------------
+      # -------------------------------------------
+      # Urlaub AUS → Zeitplan / Default
+      # -------------------------------------------
       - conditions:
           - condition: trigger
-            id: fenster_zu
+            id: vacation_off
+          - condition: state
+            entity_id: !input heiz_saison
+            state: "on"
         sequence:
           - choose:
+              - conditions:
+                  - condition: template
+                    value_template: >
+                      {{ zeitplan_enabled and zeitplan_ent is not none and is_state(zeitplan_ent, 'off') }}
+                sequence:
+                  - service: climate.set_temperature
+                    target:
+                      entity_id: !input climate_entity
+                    data:
+                      temperature: "{{ states(eco_ent) | float }}"
+            default:
+              - service: climate.set_temperature
+                target:
+                  entity_id: !input climate_entity
+                data:
+                  temperature: "{{ states(komfort_ent) | float }}"
 
-              # Urlaub aktiv → ECO
+      # -------------------------------------------
+      # Zeitplan → Komfort
+      # -------------------------------------------
+      - conditions:
+          - condition: trigger
+            id: schedule_on
+          - condition: state
+            entity_id: !input heiz_saison
+            state: "on"
+          - condition: state
+            entity_id: !input urlaub
+            state: "off"
+        sequence:
+          - service: climate.set_temperature
+            target:
+              entity_id: !input climate_entity
+            data:
+              temperature: "{{ states(komfort_ent) | float }}"
+
+      # -------------------------------------------
+      # Zeitplan → ECO
+      # -------------------------------------------
+      - conditions:
+          - condition: trigger
+            id: schedule_off
+          - condition: state
+            entity_id: !input heiz_saison
+            state: "on"
+        sequence:
+          - service: climate.set_temperature
+            target:
+              entity_id: !input climate_entity
+            data:
+              temperature: "{{ states(eco_ent) | float }}"
+
+      # -------------------------------------------
+      # Fenster geöffnet → ECO
+      # -------------------------------------------
+      - conditions:
+          - condition: trigger
+            id: window_open
+          - condition: state
+            entity_id: !input heiz_saison
+            state: "on"
+        sequence:
+          - service: climate.set_temperature
+            target:
+              entity_id: !input climate_entity
+            data:
+              temperature: "{{ states(eco_ent) | float }}"
+
+      # -------------------------------------------
+      # Fenster geschlossen → Rückkehr
+      # -------------------------------------------
+      - conditions:
+          - condition: trigger
+            id: window_close
+          - condition: state
+            entity_id: !input heiz_saison
+            state: "on"
+        sequence:
+          - choose:
               - conditions:
                   - condition: state
                     entity_id: !input urlaub
@@ -195,85 +339,58 @@ action:
                     target:
                       entity_id: !input climate_entity
                     data:
-                      temperature: "{{ states(eco_temp) | float }}"
-
-              # Zeitplan aktiv → Komfort / ECO
+                      temperature: "{{ states(eco_ent) | float }}"
               - conditions:
                   - condition: template
-                    value_template: "{{ zeitplan_aktiv }}"
-                sequence:
-                  - choose:
-                      - conditions:
-                          - condition: state
-                            entity_id: !input zeitplan
-                            state: "on"
-                        sequence:
-                          - service: climate.set_temperature
-                            target:
-                              entity_id: !input climate_entity
-                            data:
-                              temperature: "{{ states(komfort_temp) | float }}"
-                    default:
-                      - service: climate.set_temperature
-                        target:
-                          entity_id: !input climate_entity
-                        data:
-                          temperature: "{{ states(eco_temp) | float }}"
-
-            # Kein Zeitplan → nichts tun (manuelle Einstellung bleibt)
-            default: []
-
-      # -------------------------------------------------
-      # Allgemeine Statusänderung (Urlaub / Zeitplan)
-      # -------------------------------------------------
-      - conditions:
-          - condition: trigger
-            id: status_update
-        sequence:
-          - choose:
-
-              # Fenster aktuell offen → nichts ändern (bleibt ECO)
-              - conditions:
-                  - condition: template
-                    value_template: "{{ fenster_aktiv and is_state(fenster, 'on') }}"
-                sequence: []
-
-              # Urlaub aktiv → ECO
-              - conditions:
-                  - condition: state
-                    entity_id: !input urlaub
-                    state: "on"
+                    value_template: >
+                      {{ zeitplan_enabled and zeitplan_ent is not none and is_state(zeitplan_ent, 'off') }}
                 sequence:
                   - service: climate.set_temperature
                     target:
                       entity_id: !input climate_entity
                     data:
-                      temperature: "{{ states(eco_temp) | float }}"
+                      temperature: "{{ states(eco_ent) | float }}"
+            default:
+              - service: climate.set_temperature
+                target:
+                  entity_id: !input climate_entity
+                data:
+                  temperature: "{{ states(komfort_ent) | float }}"
 
-              # Zeitplan aktiv → Komfort / ECO
-              - conditions:
-                  - condition: template
-                    value_template: "{{ zeitplan_aktiv }}"
-                sequence:
-                  - choose:
-                      - conditions:
-                          - condition: state
-                            entity_id: !input zeitplan
-                            state: "on"
-                        sequence:
-                          - service: climate.set_temperature
-                            target:
-                              entity_id: !input climate_entity
-                            data:
-                              temperature: "{{ states(komfort_temp) | float }}"
-                    default:
-                      - service: climate.set_temperature
-                        target:
-                          entity_id: !input climate_entity
-                        data:
-                          temperature: "{{ states(eco_temp) | float }}"
+      # -------------------------------------------
+      # Komfort-Temperatur geändert → sofort anwenden
+      # -------------------------------------------
+      - conditions:
+          - condition: trigger
+            id: comfort_temp_changed
+          - condition: state
+            entity_id: !input heiz_saison
+            state: "on"
+          - condition: state
+            entity_id: !input urlaub
+            state: "off"
+          - condition: template
+            value_template: >
+              {{ not zeitplan_enabled or (zeitplan_ent is not none and is_state(zeitplan_ent, 'on')) }}
+        sequence:
+          - service: climate.set_temperature
+            target:
+              entity_id: !input climate_entity
+            data:
+              temperature: "{{ states(komfort_ent) | float }}"
 
-    # -------------------------------------------------
-    # Default: keine Aktion
-    # -------------------------------------------------
-    default: []
+      # -------------------------------------------
+      # ECO-Temperatur geändert → sofort anwenden
+      # -------------------------------------------
+      - conditions:
+          - condition: trigger
+            id: eco_temp_changed
+          - condition: state
+            entity_id: !input heiz_saison
+            state: "on"
+        sequence:
+          - service: climate.set_temperature
+            target:
+              entity_id: !input climate_entity
+            data:
+              temperature: "{{ states(eco_ent) | float }}"
